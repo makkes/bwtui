@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -25,7 +26,7 @@ type Object struct {
 	Login *Login `json:"login"`
 }
 
-func getItems(s string) []Object {
+func getItems(s string) ([]Object, error) {
 	args := []string{"list", "items"}
 	if s != "" {
 		args = append(args, "--search", s)
@@ -33,12 +34,66 @@ func getItems(s string) []Object {
 	cmd := exec.Command("bw", args...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
 	var obj []Object
 	if err := json.Unmarshal(out.Bytes(), &obj); err != nil {
-		panic(err)
+		return nil, err
 	}
-	return obj
+	return obj, nil
+}
+
+type DetailsDialog struct {
+	*tview.Modal
+	item           Object
+	revealPassword bool
+}
+
+func NewDetailsDialog(pages *tview.Pages) *DetailsDialog {
+	modal := tview.NewModal()
+	dd := &DetailsDialog{
+		Modal: modal,
+	}
+	modal.AddButtons([]string{"Close"}).
+		SetDoneFunc(func(btnIdx int, btnLbl string) {
+			dd.revealPassword = false
+			pages.HidePage("dialog")
+		}).
+		SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			switch event.Key() {
+			case tcell.KeyRune:
+				switch event.Rune() {
+				case 'r':
+					dd.TogglePassword()
+				}
+			}
+			return event
+		})
+
+	return dd
+}
+
+func (dd *DetailsDialog) SetItem(item Object) *DetailsDialog {
+	dd.item = item
+	dd.RenderCurrentItem()
+	return dd
+}
+
+func (dd *DetailsDialog) RenderCurrentItem() {
+	var buf strings.Builder
+	buf.WriteString(fmt.Sprintf("%s\n\nUsername: %s\nPassword: ", dd.item.Name, dd.item.Login.Username))
+	if dd.revealPassword {
+		buf.WriteString(dd.item.Login.Password)
+	} else {
+		buf.WriteString("***")
+	}
+	dd.SetText(buf.String())
+}
+
+func (dd *DetailsDialog) TogglePassword() {
+	dd.revealPassword = !dd.revealPassword
+	dd.RenderCurrentItem()
 }
 
 func copyToClipboard(s string) error {
@@ -53,7 +108,11 @@ func main() {
 		search = os.Args[1]
 	}
 	app := tview.NewApplication()
+	pages := tview.NewPages()
 	list := tview.NewList()
+
+	detailsDialog := NewDetailsDialog(pages)
+
 	bgColor := list.GetBackgroundColor()
 	fgColor := list.GetBorderColor()
 	list.SetBackgroundColor(fgColor)
@@ -61,28 +120,42 @@ func main() {
 	list.SetMainTextColor(bgColor)
 	list.SetSelectedBackgroundColor(bgColor)
 	list.SetSelectedTextColor(fgColor)
-	items := getItems(search)
+
+	items, err := getItems(search)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed getting items from vault: %s\n", err.Error())
+		os.Exit(1)
+	}
 	for _, item := range items {
 		list.AddItem(item.Name, "", 0, nil)
 	}
 	list.ShowSecondaryText(false)
 	list.SetHighlightFullLine(true)
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyRune {
-			if event.Rune() == 'p' {
-				copyToClipboard(items[list.GetCurrentItem()].Login.Password)
-			}
-			if event.Rune() == 'u' {
-				copyToClipboard(items[list.GetCurrentItem()].Login.Username)
-			}
-			if event.Rune() == 'q' {
+		item := items[list.GetCurrentItem()]
+		switch event.Key() {
+		case tcell.KeyRune:
+			switch event.Rune() {
+			case 'p':
+				copyToClipboard(item.Login.Password)
+			case 'u':
+				copyToClipboard(item.Login.Username)
+			case 'q':
 				app.Stop()
 			}
+		case tcell.KeyEnter:
+			detailsDialog.SetItem(item)
+			pages.ShowPage("dialog")
 		}
+
 		return event
 	})
 
-	if err := app.SetRoot(list, true).Run(); err != nil {
-		panic(err)
+	pages.AddPage("list", list, true, true).
+		AddPage("dialog", detailsDialog, true, false)
+
+	if err := app.SetRoot(pages, true).Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed running application: %s\n", err.Error())
+		os.Exit(1)
 	}
 }
