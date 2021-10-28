@@ -24,6 +24,7 @@ type Object struct {
 	Type  string `json:"object"`
 	Name  string `json:"name"`
 	Login *Login `json:"login"`
+	Notes string `json:"notes"`
 }
 
 func getItems(s string) ([]Object, error) {
@@ -82,11 +83,17 @@ func (dd *DetailsDialog) SetItem(item Object) *DetailsDialog {
 
 func (dd *DetailsDialog) RenderCurrentItem() {
 	var buf strings.Builder
-	buf.WriteString(fmt.Sprintf("%s\n\nUsername: %s\nPassword: ", dd.item.Name, dd.item.Login.Username))
-	if dd.revealPassword {
-		buf.WriteString(dd.item.Login.Password)
-	} else {
-		buf.WriteString("***")
+	buf.WriteString(dd.item.Name)
+	if dd.item.Login != nil {
+		buf.WriteString(fmt.Sprintf("\n\nUsername: %s\nPassword: ", dd.item.Login.Username))
+		if dd.revealPassword {
+			buf.WriteString(dd.item.Login.Password)
+		} else {
+			buf.WriteString("***")
+		}
+	}
+	if dd.item.Notes != "" {
+		buf.WriteString(fmt.Sprintf("\n\nNotes:\n%s", dd.item.Notes))
 	}
 	dd.SetText(buf.String())
 }
@@ -137,9 +144,13 @@ func main() {
 		case tcell.KeyRune:
 			switch event.Rune() {
 			case 'p':
-				copyToClipboard(item.Login.Password)
+				if item.Login != nil {
+					copyToClipboard(item.Login.Password)
+				}
 			case 'u':
-				copyToClipboard(item.Login.Username)
+				if item.Login != nil {
+					copyToClipboard(item.Login.Username)
+				}
 			case 'q':
 				app.Stop()
 			}
