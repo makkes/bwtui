@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -27,7 +29,7 @@ type Object struct {
 	Notes string `json:"notes"`
 }
 
-func getItems(s string) ([]Object, error) {
+func getItems(s string) ([]*Object, error) {
 	args := []string{"list", "items"}
 	if s != "" {
 		args = append(args, "--search", s)
@@ -38,7 +40,7 @@ func getItems(s string) ([]Object, error) {
 	if err := cmd.Run(); err != nil {
 		return nil, err
 	}
-	var obj []Object
+	var obj []*Object
 	if err := json.Unmarshal(out.Bytes(), &obj); err != nil {
 		return nil, err
 	}
@@ -47,7 +49,7 @@ func getItems(s string) ([]Object, error) {
 
 type DetailsDialog struct {
 	*tview.Modal
-	item           Object
+	item           *Object
 	revealPassword bool
 }
 
@@ -75,7 +77,7 @@ func NewDetailsDialog(pages *tview.Pages) *DetailsDialog {
 	return dd
 }
 
-func (dd *DetailsDialog) SetItem(item Object) *DetailsDialog {
+func (dd *DetailsDialog) SetItem(item *Object) *DetailsDialog {
 	dd.item = item
 	dd.RenderCurrentItem()
 	return dd
@@ -109,54 +111,108 @@ func copyToClipboard(s string) error {
 	return cmd.Run()
 }
 
+func handleFeedbackText(app *tview.Application, tv *tview.TextView) chan<- string {
+	timer := time.NewTimer(0)
+	in := make(chan string)
+	go func() {
+		for {
+			select {
+			case text := <-in:
+				app.QueueUpdateDraw(func() {
+					tv.SetText(text)
+					timer.Reset(2 * time.Second)
+				})
+			case <-timer.C:
+				app.QueueUpdateDraw(func() {
+					tv.Clear()
+				})
+			}
+		}
+	}()
+
+	return in
+}
+
 func main() {
 	search := ""
 	if len(os.Args) >= 2 {
 		search = os.Args[1]
 	}
-	app := tview.NewApplication()
-	pages := tview.NewPages()
-	list := tview.NewList()
-
-	detailsDialog := NewDetailsDialog(pages)
-
-	bgColor := list.GetBackgroundColor()
-	fgColor := list.GetBorderColor()
-	list.SetBackgroundColor(fgColor)
-	list.SetBorderColor(bgColor)
-	list.SetMainTextColor(bgColor)
-	list.SetSelectedBackgroundColor(bgColor)
-	list.SetSelectedTextColor(fgColor)
 
 	items, err := getItems(search)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed getting items from vault: %s\n", err.Error())
 		os.Exit(1)
 	}
-	for _, item := range items {
+
+	app := tview.NewApplication()
+	container := tview.NewFlex()
+	container.SetDirection(tview.FlexRow)
+	pages := tview.NewPages()
+
+	feedbackDialog := tview.NewTextView().SetMaxLines(1).SetTextAlign(tview.AlignRight)
+	feedbackCh := handleFeedbackText(app, feedbackDialog)
+
+	detailsDialog := NewDetailsDialog(pages)
+	list := tview.NewList()
+
+	filteredItems := make([]*Object, len(items))
+	copy(filteredItems, items)
+	filterInput := tview.NewInputField().
+		SetChangedFunc(func(t string) {
+			filteredItems = make([]*Object, 0)
+			for _, item := range items {
+				if regexp.MustCompile("(?i)" + t).MatchString(item.Name) {
+					filteredItems = append(filteredItems, item)
+				}
+			}
+			list.Clear()
+			for _, item := range filteredItems {
+				list.AddItem(item.Name, "", 0, nil)
+			}
+		}).
+		SetFinishedFunc(func(key tcell.Key) {
+			app.SetFocus(list)
+		})
+
+	container.AddItem(pages, 0, 1, true)
+	container.AddItem(tview.NewFlex().
+		AddItem(filterInput, 0, 1, false).
+		AddItem(feedbackDialog, 0, 1, false), 1, 1, false)
+
+	for _, item := range filteredItems {
 		list.AddItem(item.Name, "", 0, nil)
 	}
 	list.ShowSecondaryText(false)
 	list.SetHighlightFullLine(true)
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		item := items[list.GetCurrentItem()]
+		var item *Object
+		if len(filteredItems) > 0 {
+			item = filteredItems[list.GetCurrentItem()]
+		}
 		switch event.Key() {
 		case tcell.KeyRune:
 			switch event.Rune() {
+			case '/':
+				app.SetFocus(filterInput)
 			case 'p':
-				if item.Login != nil {
+				if item != nil && item.Login != nil {
 					copyToClipboard(item.Login.Password)
+					feedbackCh <- "\npassword copied to clipboard"
 				}
 			case 'u':
-				if item.Login != nil {
+				if item != nil && item.Login != nil {
 					copyToClipboard(item.Login.Username)
+					feedbackCh <- "\nusername copied to clipboard"
 				}
 			case 'q':
 				app.Stop()
 			}
 		case tcell.KeyEnter:
-			detailsDialog.SetItem(item)
-			pages.ShowPage("dialog")
+			if item != nil {
+				detailsDialog.SetItem(item)
+				pages.ShowPage("dialog")
+			}
 		}
 
 		return event
@@ -165,7 +221,7 @@ func main() {
 	pages.AddPage("list", list, true, true).
 		AddPage("dialog", detailsDialog, true, false)
 
-	if err := app.SetRoot(pages, true).Run(); err != nil {
+	if err := app.SetRoot(container, true).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed running application: %s\n", err.Error())
 		os.Exit(1)
 	}
