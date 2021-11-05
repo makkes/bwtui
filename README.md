@@ -19,6 +19,7 @@ After starting up, bwtui will fetch all items stored in your Vault and list them
 | `p` | copy the password of the highlighted item to the clipboard |
 | `/` | filter items by name                                       |
 | `q` | quit bwtui                                                 |
+| `r` | in the details dialog this reveals the password            |
 
 ## License
 
