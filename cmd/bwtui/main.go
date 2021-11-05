@@ -133,11 +133,27 @@ func handleFeedbackText(app *tview.Application, tv *tview.TextView) chan<- strin
 	return in
 }
 
+type KeyMappings struct {
+	FocusFilter  rune
+	CopyPassword rune
+	CopyUsername rune
+	QuitApp      rune
+}
+
+var defaultKeyMappings = KeyMappings{
+	FocusFilter:  '/',
+	CopyPassword: 'p',
+	CopyUsername: 'u',
+	QuitApp:      'q',
+}
+
 func main() {
 	search := ""
 	if len(os.Args) >= 2 {
 		search = os.Args[1]
 	}
+
+	keyMappings := defaultKeyMappings
 
 	items, err := getItems(search)
 	if err != nil {
@@ -193,19 +209,19 @@ func main() {
 		switch event.Key() {
 		case tcell.KeyRune:
 			switch event.Rune() {
-			case '/':
+			case keyMappings.FocusFilter:
 				app.SetFocus(filterInput)
-			case 'p':
+			case keyMappings.CopyPassword:
 				if item != nil && item.Login != nil {
 					copyToClipboard(item.Login.Password)
 					feedbackCh <- "\npassword copied to clipboard"
 				}
-			case 'u':
+			case keyMappings.CopyUsername:
 				if item != nil && item.Login != nil {
 					copyToClipboard(item.Login.Username)
 					feedbackCh <- "\nusername copied to clipboard"
 				}
-			case 'q':
+			case keyMappings.QuitApp:
 				app.Stop()
 			}
 		case tcell.KeyEnter:
