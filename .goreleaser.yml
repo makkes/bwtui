@@ -27,6 +27,18 @@ checksum:
 snapshot:
   name_template: "{{ .Tag }}-next"
 changelog:
+  use: github
+  groups:
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: 'Bug fixes'
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
   filters:
     exclude:
       - '^(refactor|chore|docs|build):'
+release:
+  footer: |
+    ### Summary
+    **Full Changelog**: https://github.com/makkes/bwtui/compare/{{ .PreviousTag }}...{{ .Tag }}
