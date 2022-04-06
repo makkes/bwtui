@@ -183,6 +183,7 @@ func handleFeedbackText(app *tview.Application, tv *tview.TextView) chan<- strin
 
 type KeyMappings struct {
 	FocusFilter  rune
+	ClearFilter  rune
 	CopyPassword rune
 	CopyUsername rune
 	QuitApp      rune
@@ -192,6 +193,7 @@ type KeyMappings struct {
 
 var defaultKeyMappings = KeyMappings{
 	FocusFilter:  '/',
+	ClearFilter:  'c',
 	CopyPassword: 'p',
 	CopyUsername: 'u',
 	QuitApp:      'q',
@@ -268,6 +270,8 @@ func main() {
 		switch event.Key() {
 		case tcell.KeyRune:
 			switch event.Rune() {
+			case keyMappings.ClearFilter:
+				filterInput.SetText("")
 			case keyMappings.ListUp:
 				list.SetCurrentItem((list.GetItemCount() + list.GetCurrentItem() - 1) % list.GetItemCount())
 			case keyMappings.ListDown:
