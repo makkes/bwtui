@@ -224,9 +224,15 @@ func main() {
 	copy(filteredItems, items)
 	filterInput := tview.NewInputField().
 		SetChangedFunc(func(t string) {
+			re, err := regexp.Compile("(?i)" + t)
+			if err != nil {
+				// Since search is performed while the user is typing, we need to expect the regexp compilation to fail.
+				// That's why we just ignore any compilation error and simply exit early.
+				return
+			}
 			filteredItems = make([]*Object, 0)
 			for _, item := range items {
-				if regexp.MustCompile("(?i)" + t).MatchString(item.Name) {
+				if re.MatchString(item.Name) || (item.Folder != nil && re.MatchString(item.Folder.Name)) {
 					filteredItems = append(filteredItems, item)
 				}
 			}
