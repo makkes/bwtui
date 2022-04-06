@@ -186,6 +186,8 @@ type KeyMappings struct {
 	CopyPassword rune
 	CopyUsername rune
 	QuitApp      rune
+	ListDown     rune
+	ListUp       rune
 }
 
 var defaultKeyMappings = KeyMappings{
@@ -193,6 +195,8 @@ var defaultKeyMappings = KeyMappings{
 	CopyPassword: 'p',
 	CopyUsername: 'u',
 	QuitApp:      'q',
+	ListDown:     'j',
+	ListUp:       'k',
 }
 
 func main() {
@@ -263,6 +267,10 @@ func main() {
 		switch event.Key() {
 		case tcell.KeyRune:
 			switch event.Rune() {
+			case keyMappings.ListUp:
+				list.SetCurrentItem((list.GetItemCount() + list.GetCurrentItem() - 1) % list.GetItemCount())
+			case keyMappings.ListDown:
+				list.SetCurrentItem((list.GetCurrentItem() + 1) % list.GetItemCount())
 			case keyMappings.FocusFilter:
 				app.SetFocus(filterInput)
 			case keyMappings.CopyPassword:
