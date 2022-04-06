@@ -21,6 +21,8 @@ After starting up, bwtui will fetch all items stored in your Vault and list them
 | `q` | quit bwtui                                                 |
 | `r` | in the details dialog this reveals the password            |
 
+The UI also supports the VIM movement controls `j` (one item down) and `k` (one item up).
+
 ## License
 
 GNU General Public License v3.0 or later
