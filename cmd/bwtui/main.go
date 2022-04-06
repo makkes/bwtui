@@ -200,14 +200,10 @@ var defaultKeyMappings = KeyMappings{
 }
 
 func main() {
-	search := ""
-	if len(os.Args) >= 2 {
-		search = os.Args[1]
-	}
 
 	keyMappings := defaultKeyMappings
 
-	items, err := getItems(search)
+	items, err := getItems("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed getting items from vault: %s\n", err.Error())
 		os.Exit(1)
@@ -226,7 +222,8 @@ func main() {
 
 	filteredItems := make([]*Object, len(items))
 	copy(filteredItems, items)
-	filterInput := tview.NewInputField().
+	filterInput := tview.NewInputField()
+	filterInput.
 		SetChangedFunc(func(t string) {
 			re, err := regexp.Compile("(?i)" + t)
 			if err != nil {
@@ -248,6 +245,10 @@ func main() {
 		SetFinishedFunc(func(key tcell.Key) {
 			app.SetFocus(list)
 		})
+
+	if len(os.Args) >= 2 {
+		filterInput.SetText(os.Args[1])
+	}
 
 	container.AddItem(pages, 0, 1, true)
 	container.AddItem(tview.NewFlex().
