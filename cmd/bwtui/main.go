@@ -23,13 +23,53 @@ type Login struct {
 }
 
 type Object struct {
-	Type  string `json:"object"`
-	Name  string `json:"name"`
-	Login *Login `json:"login"`
-	Notes string `json:"notes"`
+	Type     string `json:"object"`
+	Name     string `json:"name"`
+	Login    *Login `json:"login"`
+	Notes    string `json:"notes"`
+	FolderId string `json:"folderId"`
+	Folder   *Folder
+}
+
+func (o Object) String() string {
+	if o.Folder != nil {
+		return fmt.Sprintf("%s (%s)", o.Name, o.Folder.Name)
+	}
+	return o.Name
+}
+
+type Folder struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func getFolders() (map[string]*Folder, error) {
+	cmd := exec.Command("bw", "list", "folders")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+
+	var folders []*Folder
+	if err := json.Unmarshal(out.Bytes(), &folders); err != nil {
+		return nil, err
+	}
+
+	res := make(map[string]*Folder, len(folders))
+	for _, f := range folders {
+		res[f.ID] = f
+	}
+
+	return res, nil
 }
 
 func getItems(s string) ([]*Object, error) {
+	folders, err := getFolders()
+	if err != nil {
+		return nil, err
+	}
+
 	args := []string{"list", "items"}
 	if s != "" {
 		args = append(args, "--search", s)
@@ -43,6 +83,11 @@ func getItems(s string) ([]*Object, error) {
 	var obj []*Object
 	if err := json.Unmarshal(out.Bytes(), &obj); err != nil {
 		return nil, err
+	}
+	for _, obj := range obj {
+		if obj.FolderId != "" {
+			obj.Folder = folders[obj.FolderId]
+		}
 	}
 	return obj, nil
 }
@@ -85,9 +130,12 @@ func (dd *DetailsDialog) SetItem(item *Object) *DetailsDialog {
 
 func (dd *DetailsDialog) RenderCurrentItem() {
 	var buf strings.Builder
-	buf.WriteString(dd.item.Name)
+	buf.WriteString(fmt.Sprintf("%s\n\n", dd.item.Name))
+	if dd.item.Folder != nil {
+		buf.WriteString(fmt.Sprintf("Folder: %s\n", dd.item.Folder.Name))
+	}
 	if dd.item.Login != nil {
-		buf.WriteString(fmt.Sprintf("\n\nUsername: %s\nPassword: ", dd.item.Login.Username))
+		buf.WriteString(fmt.Sprintf("Username: %s\nPassword: ", dd.item.Login.Username))
 		if dd.revealPassword {
 			buf.WriteString(dd.item.Login.Password)
 		} else {
@@ -184,7 +232,7 @@ func main() {
 			}
 			list.Clear()
 			for _, item := range filteredItems {
-				list.AddItem(item.Name, "", 0, nil)
+				list.AddItem(item.String(), "", 0, nil)
 			}
 		}).
 		SetFinishedFunc(func(key tcell.Key) {
@@ -197,7 +245,7 @@ func main() {
 		AddItem(feedbackDialog, 0, 1, false), 1, 1, false)
 
 	for _, item := range filteredItems {
-		list.AddItem(item.Name, "", 0, nil)
+		list.AddItem(item.String(), "", 0, nil)
 	}
 	list.ShowSecondaryText(false)
 	list.SetHighlightFullLine(true)
