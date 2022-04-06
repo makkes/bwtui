@@ -248,10 +248,6 @@ func main() {
 			app.SetFocus(list)
 		})
 
-	if len(os.Args) >= 2 {
-		filterInput.SetText(os.Args[1])
-	}
-
 	container.AddItem(pages, 0, 1, true)
 	container.AddItem(tview.NewFlex().
 		AddItem(filterInput, 0, 1, false).
@@ -303,6 +299,10 @@ func main() {
 
 	pages.AddPage("list", list, true, true).
 		AddPage("dialog", detailsDialog, true, false)
+
+	if len(os.Args) >= 2 {
+		filterInput.SetText(os.Args[1])
+	}
 
 	if err := app.SetRoot(container, true).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed running application: %s\n", err.Error())
